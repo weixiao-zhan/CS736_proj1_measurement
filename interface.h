@@ -16,7 +16,8 @@
 #define S_512KB 1024*512
 #define S_1MB   1024*1024
 
-#define BUFFER_SZ 1000000
+#define MAX_BUFFER_CAP 1000000
+#define TEST_BUFFER_SZ 100000
 
 //4, 16, 64, 256, 1K, 4K, 16K, 64K, 256K, and 512K bytes.
 

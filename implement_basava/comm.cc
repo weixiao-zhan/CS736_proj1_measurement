@@ -28,11 +28,11 @@ struct pc_buffer {
      sem_t sem_switch;
      int prod_idx = 0;
      int cons_idx = 0;
-     char buffer[BUFFER_SZ];
-     int cap = BUFFER_SZ;
+     char buffer[MAX_BUFFER_CAP];
+     int cap = MAX_BUFFER_CAP;
 };
 
-int run_pipe(size_t data_size, size_t buffer_sz /*unused*/) {
+int run_pipe(size_t data_size, size_t buffer_sz) {
      printf("testing pipe communication with datasize=%lu\n", data_size);
 
      int fd1[2], fd2[2];
@@ -55,12 +55,12 @@ int run_pipe(size_t data_size, size_t buffer_sz /*unused*/) {
           
           int tick_start = getticks();
           while (total_data_sent < data_size) {
-               bytes_written = write(fd1[1], arr, data_size);
+               bytes_written = write(fd1[1], arr + total_data_sent, min((int) buffer_sz, (int) data_size - total_data_sent));
                if (bytes_written >= 0) total_data_sent += bytes_written;
           }
           close(fd1[1]);
           
-          while(bytes_read = read(fd2[0], arr + bytes_read, data_size)) {
+          while(bytes_read = read(fd2[0], arr + total_data_recv, min((int) buffer_sz, (int) data_size - total_data_recv))) {
                if (bytes_read >= 0) total_data_recv += bytes_read;
           }
           int tick_end = getticks();
@@ -76,12 +76,12 @@ int run_pipe(size_t data_size, size_t buffer_sz /*unused*/) {
           int bytes_written = 0, total_data_sent = 0;
           int bytes_read = 0, total_data_recv = 0;
           
-          while(bytes_read = read(fd1[0], arr + bytes_read, data_size)) {
+          while(bytes_read = read(fd1[0], arr + total_data_recv, min((int) buffer_sz, (int) data_size - total_data_recv))) {
                if (bytes_read >= 0) total_data_recv += bytes_read;
           }
           
           while (total_data_sent < data_size) {
-               bytes_written = write(fd2[1], arr, data_size);
+               bytes_written = write(fd2[1], arr + total_data_sent,  min((int) buffer_sz, (int) data_size - total_data_sent));
                if (bytes_written >= 0) total_data_sent += bytes_written;
           }
           close(fd2[1]);
@@ -90,7 +90,7 @@ int run_pipe(size_t data_size, size_t buffer_sz /*unused*/) {
      return 1;
 }
 
-int socket_server(int data_size) {
+int socket_server(int data_size, size_t buffer_sz) {
      unlink(SOCKET_NAME);
 
      int fd = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -131,12 +131,12 @@ int socket_server(int data_size) {
           int bytes_read = 0, bytes_written = 0, total_data_recv = 0, total_data_sent = 0;
 
           while(total_data_recv < data_size) {
-               bytes_read = read(client_fd, arr + total_data_recv, data_size - total_data_recv);
+               bytes_read = read(client_fd, arr + total_data_recv, min((int) buffer_sz, (int) data_size - total_data_recv));
                total_data_recv += bytes_read;
           }
 
           while (total_data_sent < total_data_recv) {
-               bytes_written = write(client_fd, arr + total_data_sent, total_data_recv - total_data_sent);
+               bytes_written = write(client_fd, arr + total_data_sent, min((int) buffer_sz, total_data_recv - total_data_sent));
                total_data_sent += bytes_written;
           }
           close(client_fd);
@@ -155,7 +155,7 @@ int socket_server(int data_size) {
      return 1;
 }
 
-void socket_client(int data_size) {
+void socket_client(int data_size, size_t buffer_sz) {
      int fd = socket(AF_UNIX, SOCK_STREAM, 0);
      if (fd < 0) {
           printf("socket creation error\n");
@@ -181,24 +181,24 @@ void socket_client(int data_size) {
 
      int bytes_read = 0, bytes_written = 0, total_data_recv = 0, total_data_sent = 0;
      while (total_data_sent < data_size) {
-          bytes_written = write(fd, arr + total_data_sent, data_size - total_data_sent);
+          bytes_written = write(fd, arr + total_data_sent, min((int) buffer_sz, (int) data_size - total_data_sent));
           total_data_sent += bytes_written;
      }
 
      while(total_data_recv < total_data_sent) {
-          bytes_read = read(fd, arr + total_data_recv, total_data_sent - total_data_recv);
+          bytes_read = read(fd, arr + total_data_recv, min((int) buffer_sz, total_data_sent - total_data_recv));
           total_data_recv += bytes_read;
      }
      close(fd);
 }
 
-int run_socket(size_t data_size, size_t buffer_sz /*unused*/) {
+int run_socket(size_t data_size, size_t buffer_sz) {
      printf("testing socket communication with datasize=%lu\n", data_size);
      int ret = 1;
      int child_id = fork();
-     if (child_id != 0) ret = socket_server(data_size);
+     if (child_id != 0) ret = socket_server(data_size, buffer_sz);
      else {
-          socket_client(data_size);
+          socket_client(data_size, buffer_sz);
           exit(0);
      }
 
@@ -208,13 +208,13 @@ int run_socket(size_t data_size, size_t buffer_sz /*unused*/) {
      return ret;
 }
 
-int run_shared_mem(size_t data_size, size_t buffer_sz /*unused*/) {
+int run_shared_mem(size_t data_size, size_t buffer_sz) {
      printf("testing shared memory communication with datasize=%lu\n", data_size);
 
      int fd = open("/dev/zero", O_RDWR);
      pc_buffer *buffer;
      buffer = (pc_buffer*) mmap(NULL, sizeof(pc_buffer), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
-     buffer->cap = BUFFER_SZ;
+     buffer->cap = MAX_BUFFER_CAP;
      sem_init(&buffer->sem_prod, 1, buffer->cap);
      sem_init(&buffer->sem_cons, 1, 0);
      sem_init(&buffer->sem_switch, 1, 0);
@@ -232,18 +232,18 @@ int run_shared_mem(size_t data_size, size_t buffer_sz /*unused*/) {
           int bytes_written = 0, bytes_read = 0, buffer_idx = 0;
           while(bytes_written < data_size) {
                sem_wait(&buffer->sem_prod);
-               strncpy(buffer->buffer + buffer_idx, arr + bytes_written, min(buffer->cap, (int) data_size - bytes_written));
-               bytes_written += min(buffer->cap, (int) data_size - bytes_written);
-               buffer_idx = bytes_written % buffer->cap;
+               strncpy(buffer->buffer + buffer_idx, arr + bytes_written, min((int) buffer_sz, (int) data_size - bytes_written));
+               bytes_written += min((int) buffer_sz, (int) data_size - bytes_written);
+               buffer_idx = bytes_written % buffer_sz;
                sem_post(&buffer->sem_prod);
           }
           sem_wait(&buffer->sem_switch);
           buffer_idx = 0;
           while(bytes_read < data_size) {
                sem_wait(&buffer->sem_prod);
-               strncpy(arr + bytes_read, buffer->buffer + buffer_idx, min(buffer->cap, (int) data_size - bytes_read));
-               bytes_read += min(buffer->cap, (int) data_size - bytes_read);
-               buffer_idx = bytes_read % buffer->cap;
+               strncpy(arr + bytes_read, buffer->buffer + buffer_idx, min((int) buffer_sz, (int) data_size - bytes_read));
+               bytes_read += min((int) buffer_sz, (int) data_size - bytes_read);
+               buffer_idx = bytes_read % buffer_sz;
                sem_post(&buffer->sem_prod);
           }
 
@@ -259,18 +259,18 @@ int run_shared_mem(size_t data_size, size_t buffer_sz /*unused*/) {
           int bytes_written = 0, bytes_read = 0, buffer_idx = 0;
           while(bytes_read < data_size) {
                sem_wait(&buffer->sem_prod);
-               strncpy(arr + bytes_read, buffer->buffer + buffer_idx, std::min(buffer->cap, (int) data_size - bytes_read));
-               bytes_read += std::min(buffer->cap, (int) data_size - bytes_read);
-               buffer_idx = bytes_read % buffer->cap;
+               strncpy(arr + bytes_read, buffer->buffer + buffer_idx, std::min((int) buffer_sz, (int) data_size - bytes_read));
+               bytes_read += std::min((int) buffer_sz, (int) data_size - bytes_read);
+               buffer_idx = bytes_read % buffer_sz;
                sem_post(&buffer->sem_prod);
           }
           sem_post(&buffer->sem_switch);
           buffer_idx = 0;
           while(bytes_written < data_size) {
                sem_wait(&buffer->sem_prod);
-               strncpy(buffer->buffer + buffer_idx, arr + bytes_written, std::min(buffer->cap, (int) data_size - bytes_written));
-               bytes_written += std::min(buffer->cap, (int) data_size - bytes_written);
-               buffer_idx = bytes_written % buffer->cap;
+               strncpy(buffer->buffer + buffer_idx, arr + bytes_written, std::min((int) buffer_sz, (int) data_size - bytes_written));
+               bytes_written += std::min((int) buffer_sz, (int) data_size - bytes_written);
+               buffer_idx = bytes_written % buffer_sz;
                sem_post(&buffer->sem_prod);
           }
           exit(0);
@@ -302,15 +302,15 @@ int main(int argc, char* argv[]) {
 
      switch(mode) {
           case 1: {
-               run_pipe(atoi(argv[2]), BUFFER_SZ);
+               run_pipe(atoi(argv[2]), TEST_BUFFER_SZ);
                break;
           }
           case 2: {
-               run_socket(atoi(argv[2]), BUFFER_SZ);
+               run_socket(atoi(argv[2]), TEST_BUFFER_SZ);
                break;
           }
           case 3: {
-               run_shared_mem(atoi(argv[2]), BUFFER_SZ);
+               run_shared_mem(atoi(argv[2]), TEST_BUFFER_SZ);
           }
      }
 
