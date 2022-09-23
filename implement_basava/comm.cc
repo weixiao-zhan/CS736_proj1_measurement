@@ -26,8 +26,6 @@ struct pc_buffer {
      sem_t sem_prod;
      sem_t sem_cons;
      sem_t sem_switch;
-     int prod_idx = 0;
-     int cons_idx = 0;
      char buffer[MAX_BUFFER_CAP];
      int cap = MAX_BUFFER_CAP;
 };
@@ -215,12 +213,9 @@ int run_shared_mem(size_t data_size, size_t buffer_sz) {
      pc_buffer *buffer;
      buffer = (pc_buffer*) mmap(NULL, sizeof(pc_buffer), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
      buffer->cap = MAX_BUFFER_CAP;
-     sem_init(&buffer->sem_prod, 1, buffer->cap);
+     sem_init(&buffer->sem_prod, 1, buffer->cap/buffer_sz);
      sem_init(&buffer->sem_cons, 1, 0);
      sem_init(&buffer->sem_switch, 1, 0);
-     buffer->cons_idx = 0;
-     buffer->prod_idx = 0;
-     
 
      char *arr = (char*) malloc(data_size*sizeof(char));
      for (int i = 0 ; i + 1 < data_size ; i++) arr[i] = '0';
@@ -229,21 +224,23 @@ int run_shared_mem(size_t data_size, size_t buffer_sz) {
      if (child_id != 0) {
           int tick_start = getticks();
 
-          int bytes_written = 0, bytes_read = 0, buffer_idx = 0;
+          int bytes_written = 0, bytes_read = 0, buffer_idx = 0, bytes_to_write, bytes_to_read;
           while(bytes_written < data_size) {
                sem_wait(&buffer->sem_prod);
-               strncpy(buffer->buffer + buffer_idx, arr + bytes_written, min((int) buffer_sz, (int) data_size - bytes_written));
-               bytes_written += min((int) buffer_sz, (int) data_size - bytes_written);
-               buffer_idx = bytes_written % buffer_sz;
-               sem_post(&buffer->sem_prod);
+               bytes_to_write = min({(int) buffer_sz, (int) data_size - bytes_written, (int) buffer->cap - buffer_idx});
+               strncpy(buffer->buffer + buffer_idx, arr + bytes_written, bytes_to_write);
+               bytes_written += bytes_to_write;
+               buffer_idx = bytes_written % buffer->cap;
+               sem_post(&buffer->sem_cons);
           }
           sem_wait(&buffer->sem_switch);
           buffer_idx = 0;
           while(bytes_read < data_size) {
-               sem_wait(&buffer->sem_prod);
-               strncpy(arr + bytes_read, buffer->buffer + buffer_idx, min((int) buffer_sz, (int) data_size - bytes_read));
-               bytes_read += min((int) buffer_sz, (int) data_size - bytes_read);
-               buffer_idx = bytes_read % buffer_sz;
+               sem_wait(&buffer->sem_cons);
+               bytes_to_read = min({(int) buffer_sz, (int) data_size - bytes_read, (int) buffer->cap - buffer_idx});
+               strncpy(arr + bytes_read, buffer->buffer + buffer_idx, bytes_to_read);
+               bytes_read += bytes_to_read;
+               buffer_idx = bytes_read % buffer->cap;
                sem_post(&buffer->sem_prod);
           }
 
@@ -256,22 +253,24 @@ int run_shared_mem(size_t data_size, size_t buffer_sz) {
           munmap(buffer, sizeof(pc_buffer));
 
      } else {
-          int bytes_written = 0, bytes_read = 0, buffer_idx = 0;
+          int bytes_written = 0, bytes_read = 0, buffer_idx = 0, bytes_to_write, bytes_to_read;
           while(bytes_read < data_size) {
-               sem_wait(&buffer->sem_prod);
-               strncpy(arr + bytes_read, buffer->buffer + buffer_idx, std::min((int) buffer_sz, (int) data_size - bytes_read));
-               bytes_read += std::min((int) buffer_sz, (int) data_size - bytes_read);
-               buffer_idx = bytes_read % buffer_sz;
+               sem_wait(&buffer->sem_cons);
+               bytes_to_read = std::min({(int) buffer_sz, (int) data_size - bytes_read, (int) buffer->cap - buffer_idx});
+               strncpy(arr + bytes_read, buffer->buffer + buffer_idx, bytes_to_read);
+               bytes_read += bytes_to_read;
+               buffer_idx = bytes_read % buffer->cap;
                sem_post(&buffer->sem_prod);
           }
           sem_post(&buffer->sem_switch);
           buffer_idx = 0;
           while(bytes_written < data_size) {
                sem_wait(&buffer->sem_prod);
-               strncpy(buffer->buffer + buffer_idx, arr + bytes_written, std::min((int) buffer_sz, (int) data_size - bytes_written));
-               bytes_written += std::min((int) buffer_sz, (int) data_size - bytes_written);
-               buffer_idx = bytes_written % buffer_sz;
-               sem_post(&buffer->sem_prod);
+               bytes_to_write = std::min({(int) buffer_sz, (int) data_size - bytes_written, (int) buffer->cap - buffer_idx});
+               strncpy(buffer->buffer + buffer_idx, arr + bytes_written, bytes_to_write);
+               bytes_written += bytes_to_write;
+               buffer_idx = bytes_written % buffer->cap;
+               sem_post(&buffer->sem_cons);
           }
           exit(0);
      }
