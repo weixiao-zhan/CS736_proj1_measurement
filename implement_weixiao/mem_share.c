@@ -64,7 +64,7 @@ int run_shared_mem(size_t data_size, size_t buffer_size) {
             write_cnt += n;
             buffer_idx = (buffer_idx+n) % buffer_size;
             sem_post(&buffer->sem_writing_lock);
-            printf("c: %d\n", write_cnt);
+            //printf("c: %d\n", write_cnt);
         }
         return 1;
     } else {
@@ -92,7 +92,7 @@ int run_shared_mem(size_t data_size, size_t buffer_size) {
         }
         printf("Recieved: %s\n(%d)", arr, read_cnt);
         munmap(buffer, sizeof(shared_buffer));
-        waitpid(child_id, NULL, 0);
+        //waitpid(child_id, NULL, 0);
     }
     // returning 1 for success, as per header file.
     return 1;
