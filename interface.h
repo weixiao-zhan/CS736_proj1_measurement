@@ -3,23 +3,8 @@
 #ifndef INTERFACE_H
 #define INTERFACE_H
 
-
-#define S_4B    4
-#define S_16B   16
-#define S_64B   64
-#define S_256B  256
-#define S_1KB   1024
-#define S_4KB   1024*4
-#define S_16KB  1024*16
-#define S_64KB  1024*64
-#define S_256KB 1024*256
-#define S_512KB 1024*512
-#define S_1MB   1024*1024
-
 #define MAX_BUFFER_CAP 1000000
 #define TEST_BUFFER_SZ 100000
-
-//4, 16, 64, 256, 1K, 4K, 16K, 64K, 256K, and 512K bytes.
 
 /* Headers for reporting rdtsc cycles
  * Usage - 
@@ -38,11 +23,11 @@ int cpu_freq_hz = 1200887;
 */
 static __inline__ ticks getticks(void)
 {
-     unsigned a, d;
-     asm("cpuid");
-     asm volatile("rdtsc" : "=a" (a), "=d" (d));
+    unsigned a, d;
+    asm("cpuid");
+    asm volatile("rdtsc" : "=a" (a), "=d" (d));
 
-     return (((ticks)a) | (((ticks)d) << 32));
+    return (((ticks)a) | (((ticks)d) << 32));
 }
 
 /**
