@@ -59,7 +59,7 @@ int run_shared_mem(size_t data_size, size_t buffer_size) {
         buffer_idx = 0;
         while(write_cnt < data_size) {
             sem_wait(&buffer->sem_writing_lock);
-            int n = MIN((int) buffer_size-buffer_idx, (int) data_size - read_cnt);
+            int n = MIN((int) buffer_size-buffer_idx, (int) data_size - write_cnt);
             strncpy(buffer->buffer + buffer_idx, arr + write_cnt, n);
             write_cnt += n;
             buffer_idx = (buffer_idx+n) % buffer_size;
@@ -74,7 +74,7 @@ int run_shared_mem(size_t data_size, size_t buffer_size) {
         int write_cnt = 0, read_cnt = 0, buffer_idx = 0;
         while(write_cnt < data_size) {
             sem_wait(&buffer->sem_writing_lock);
-            int n = MIN((int) buffer_size-buffer_idx, (int) data_size - read_cnt);
+            int n = MIN((int) buffer_size-buffer_idx, (int) data_size - write_cnt);
             strncpy(buffer->buffer + buffer_idx, arr + write_cnt, n);
             write_cnt += n;
             buffer_idx = (buffer_idx+n) % buffer_size;
@@ -92,7 +92,7 @@ int run_shared_mem(size_t data_size, size_t buffer_size) {
         }
         printf("Recieved: %s\n(%d)", arr, read_cnt);
         munmap(buffer, sizeof(shared_buffer));
-        //waitpid(child_id, NULL, 0);
+        waitpid(child_id, NULL, 0);
     }
     // returning 1 for success, as per header file.
     return 1;
