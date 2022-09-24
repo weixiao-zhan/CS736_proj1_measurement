@@ -1,3 +1,4 @@
+#include <bits/stdc++.h>
 #include <sys/time.h>
 #include <time.h>
 #include <stdio.h>
@@ -19,8 +20,6 @@
 #include "../interface.h"
 
 using namespace std;
-
-#define SOCKET_NAME "/tmp/9Lq7BNBnBycd6nxy.socket"
 
 struct pc_buffer {
      sem_t sem_prod;
@@ -88,23 +87,26 @@ int run_pipe(size_t data_size, size_t buffer_sz) {
      return 1;
 }
 
-int socket_server(int data_size, size_t buffer_sz) {
-     unlink(SOCKET_NAME);
-
-     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+int socket_server(int data_size, size_t buffer_sz, sem_t *sem_start) {
+     int port = 5001;
+     std::string ip = "127.0.0.1";
+     int fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
      if (fd < 0) {
           printf("socket creation error\n");
           // returning error
           return 0;
      }
 
-     struct sockaddr_un saddr;
-     memset(&saddr, 0, sizeof(struct sockaddr_un));
-     saddr.sun_family = AF_UNIX; 
-     strncpy(saddr.sun_path, SOCKET_NAME, sizeof(saddr.sun_path) - 1);
+     struct sockaddr_in saddr;
+     memset(&saddr, 0, sizeof(struct sockaddr_in));
+     saddr.sin_family = AF_INET; 
+     saddr.sin_port = port;
+     saddr.sin_addr.s_addr = inet_addr(ip.c_str());
 
      int sock_closer = 1;
      setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &sock_closer, sizeof(int));
+     int no_dealy = 1;
+     setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &no_dealy, sizeof(int));
 
      if (bind(fd, (struct sockaddr *) &saddr, sizeof(saddr)) < 0) {
           printf("socket bind error\n");
@@ -117,7 +119,7 @@ int socket_server(int data_size, size_t buffer_sz) {
           // returning error
           return 0;
      }
-
+     sem_post(sem_start);
      char *arr = (char*) malloc((data_size + 1)*sizeof(char));
      while(1) {
           struct sockaddr_in caddr; 
@@ -148,13 +150,15 @@ int socket_server(int data_size, size_t buffer_sz) {
           break;
      }
      close(fd);
-     unlink(SOCKET_NAME);
-
      return 1;
 }
 
-void socket_client(int data_size, size_t buffer_sz) {
-     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+void socket_client(int data_size, size_t buffer_sz, sem_t *sem_start) {
+     sem_wait(sem_start);
+     
+     int port = 5001;
+     std::string ip = "127.0.0.1";
+     int fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
      if (fd < 0) {
           printf("socket creation error\n");
           exit(1);
@@ -162,11 +166,14 @@ void socket_client(int data_size, size_t buffer_sz) {
 
      int sock_closer = 1;
      setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &sock_closer, sizeof(int));
+     int no_dealy = 1;
+     setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &no_dealy, sizeof(int));
 
-     struct sockaddr_un saddr;
-     memset(&saddr, 0, sizeof(struct sockaddr_un));
-     saddr.sun_family = AF_UNIX;
-     strncpy(saddr.sun_path, SOCKET_NAME, sizeof(saddr.sun_path) - 1);
+     struct sockaddr_in saddr;
+     memset(&saddr, 0, sizeof(struct sockaddr_in));
+     saddr.sin_family = AF_INET;
+     saddr.sin_port = port;
+     saddr.sin_addr.s_addr = inet_addr(ip.c_str());
 
      if (connect(fd, (struct sockaddr*) &saddr, sizeof(saddr)) < 0) {
           printf("socket connect failed\n");
@@ -192,11 +199,17 @@ void socket_client(int data_size, size_t buffer_sz) {
 
 int run_socket(size_t data_size, size_t buffer_sz) {
      printf("testing socket communication with datasize=%lu\n", data_size);
+
+     int fd = open("/dev/zero", O_RDWR);
+     sem_t *sem_server_start;
+     sem_server_start = (sem_t*) mmap(NULL, sizeof(sem_t), PROT_READ|PROT_WRITE, MAP_SHARED, fd, 0);
+     sem_init(sem_server_start, 1, 0);
+
      int ret = 1;
      int child_id = fork();
-     if (child_id != 0) ret = socket_server(data_size, buffer_sz);
+     if (child_id != 0) ret = socket_server(data_size, buffer_sz, sem_server_start);
      else {
-          socket_client(data_size, buffer_sz);
+          socket_client(data_size, buffer_sz, sem_server_start);
           exit(0);
      }
 
