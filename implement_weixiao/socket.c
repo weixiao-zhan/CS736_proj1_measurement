@@ -99,9 +99,10 @@ int run_socket(size_t message_size, size_t package_size) {
             perror("[-]connect error");
             exit(1);
         }
- 
+        // @HERE: start timer
         write_helper(sock, message_size, package_size);
         int n = read_helper(sock, message_size, package_size);
+        // @HERE: stop timer
         close(sock);
 
         printf("Received: %d", n);

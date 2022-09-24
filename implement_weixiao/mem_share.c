@@ -88,6 +88,8 @@ int _run_shared_mem(char* data, size_t data_size, size_t buffer_size) {
         char* data_received  = (char*) malloc(data_size*sizeof(char));
         int write_cnt = 0, read_cnt = 0, buffer_idx = 0;
 
+        // @HERE: start timer
+
         while(write_cnt < data_size) {
             sem_wait(&buffer->sem_buffer_lock);
             int n = MIN(MIN((int) buffer_size-buffer_idx, (int) data_size - write_cnt), buffer_size - buffer->using_size);
@@ -115,6 +117,8 @@ int _run_shared_mem(char* data, size_t data_size, size_t buffer_size) {
             }
             sem_post(&buffer->sem_buffer_lock);
         }
+
+        // @HERE: stop timer
 
         printf("P: Recieved: %s\n(%d)\n", data_received, read_cnt);
         munmap(buffer, sizeof(shared_buffer));

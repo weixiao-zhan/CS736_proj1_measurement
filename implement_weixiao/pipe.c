@@ -39,8 +39,10 @@ int run_pipe(size_t message_size, size_t package_size){
         write_helper(fd2[1], message_size, package_size);
         exit(0);
     } else { /* Parent process */
+        // @HERE: start timer
         write_helper(fd1[1], message_size, package_size);
         int n = read_helper(fd2[0], message_size, package_size);
+        // @HERE: stop timer
         printf("Received: %d", n);
     }
     return(0);
