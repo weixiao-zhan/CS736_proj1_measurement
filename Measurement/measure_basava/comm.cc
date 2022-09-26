@@ -93,14 +93,14 @@ uint64_t run_pipe(size_t data_size, size_t buffer_sz, uint64_t (*timer_func)(), 
      }
 }
 
-uint64_t socket_server(int data_size, size_t buffer_sz, sem_t *sem_start, uint64_t (*timer_func)(), int mode) {
+void socket_server(int data_size, size_t buffer_sz, sem_t *sem_start, int mode) {
      int port = 5001;
      std::string ip = "127.0.0.1";
      int fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
      if (fd < 0) {
           printf("socket creation error\n");
           // returning error
-          return 0;
+          return;
      }
 
      struct sockaddr_in saddr;
@@ -117,18 +117,17 @@ uint64_t socket_server(int data_size, size_t buffer_sz, sem_t *sem_start, uint64
      if (bind(fd, (struct sockaddr *) &saddr, sizeof(saddr)) < 0) {
           printf("socket bind error\n");
           // returning error
-          return 0;
+          return;
      }
 
      if (listen(fd, 1) < 0) {
           printf("socket listen error\n");
           // returning error
-          return 0;
+          return;
      }
 
      sem_post(sem_start);
      char *arr = (char*) malloc((data_size + 1)*sizeof(char));
-     uint64_t ticks_counted = 0;
      while(1) {
           struct sockaddr_in caddr; 
           int len = sizeof(caddr);
@@ -136,7 +135,6 @@ uint64_t socket_server(int data_size, size_t buffer_sz, sem_t *sem_start, uint64
           if (client_fd < 0) continue;
 
           int bytes_read = 0, bytes_written = 0, total_data_recv = 0, total_data_sent = 0;
-          uint64_t tick_start = (*timer_func)();
           while(total_data_recv < data_size) {
                bytes_read = read(client_fd, arr + total_data_recv, min((int) buffer_sz, (int) data_size - total_data_recv));
                total_data_recv += bytes_read;
@@ -150,8 +148,7 @@ uint64_t socket_server(int data_size, size_t buffer_sz, sem_t *sem_start, uint64
           } else {
                bytes_written = write(client_fd, arr, 1);
           }
-          uint64_t tick_end = (*timer_func)();
-          ticks_counted = tick_end - tick_start;
+          
           close(client_fd);
 
           break;
@@ -159,13 +156,13 @@ uint64_t socket_server(int data_size, size_t buffer_sz, sem_t *sem_start, uint64
      close(fd);
 
      free(arr);
-     return ticks_counted;
 }
 
-void socket_client(int data_size, size_t buffer_sz, sem_t *sem_start, int mode) {
+uint64_t socket_client(int data_size, size_t buffer_sz, sem_t *sem_start, uint64_t (*timer_func)(), int mode) {
      sem_wait(sem_start);
 
      int port = 5001;
+     uint64_t ticks_counted = 0;
      std::string ip = "127.0.0.1";
      int fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
      if (fd < 0) {
@@ -194,6 +191,7 @@ void socket_client(int data_size, size_t buffer_sz, sem_t *sem_start, int mode) 
      arr[data_size - 1] = '\0';
 
      int bytes_read = 0, bytes_written = 0, total_data_recv = 0, total_data_sent = 0;
+     uint64_t tick_start = (*timer_func)();
      while (total_data_sent < data_size) {
           bytes_written = write(fd, arr + total_data_sent, min((int) buffer_sz, (int) data_size - total_data_sent));
           total_data_sent += bytes_written;
@@ -210,8 +208,11 @@ void socket_client(int data_size, size_t buffer_sz, sem_t *sem_start, int mode) 
                total_data_recv += bytes_read;
           }
      }
+     uint64_t tick_end = (*timer_func)();
+     ticks_counted = tick_end - tick_start;
      close(fd);
      free(arr);
+     return ticks_counted;
 }
 
 uint64_t run_socket(size_t data_size, size_t buffer_sz, uint64_t (*timer_func)(), int mode) {
@@ -222,16 +223,16 @@ uint64_t run_socket(size_t data_size, size_t buffer_sz, uint64_t (*timer_func)()
 
      uint64_t ret = 1;
      int child_id = fork();
-     if (child_id != 0) ret = socket_server(data_size, buffer_sz, sem_server_start, timer_func, mode);
+     if (child_id != 0) socket_server(data_size, buffer_sz, sem_server_start, mode);
      else {
-          socket_client(data_size, buffer_sz, sem_server_start, mode);
-          exit(0);
+          ret = socket_client(data_size, buffer_sz, sem_server_start, timer_func, mode);
+          return ret;
      }
 
      waitpid(child_id, NULL, 0);
 
      // returning 1 for success, as per header file.
-     return ret;
+     exit(0);
 }
 
 uint64_t run_shared_mem(size_t data_size, size_t buffer_sz, uint64_t (*timer_func)(), int mode) {
