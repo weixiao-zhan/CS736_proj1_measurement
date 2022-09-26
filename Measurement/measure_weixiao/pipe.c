@@ -20,7 +20,6 @@ uint64_t run_pipe(size_t message_size, size_t package_size, uint64_t (*timer_fun
         returning_message_size = 1;
     pipe_setup(fd1, fd2);
     
-
     pid_t childpid;
     if ((childpid = fork()) == -1) {
         perror("fork");

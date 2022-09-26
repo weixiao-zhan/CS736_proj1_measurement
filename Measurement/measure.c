@@ -11,7 +11,7 @@
 #include "interface.h"
 
 #define FREQ 2700000000
-#define MAX_REP 80 
+#define MAX_REP 10
 
 uint64_t simple_operation(size_t a, size_t b, uint64_t (*timer_func)(), int mode);
 
@@ -21,8 +21,12 @@ const char* ipc_func_name[] = { "pipe", "socket", "shared mem"};
 int ipc_func_count = 3;
 
 
+size_t buffer_size_arr[] = {S_4B, S_16B, S_64B, S_256B, S_1KB, S_4KB, S_16KB, S_64KB};
+
 size_t datasize_arr[] = {S_4B, S_16B, S_64B, S_256B, S_1KB, S_4KB, S_16KB, S_64KB, S_256KB, S_512KB, S_1MB};
+
 int datasize_arr_count = 11;
+int buffer_size_arr_count = 8;
 
 
 struct timespec global_timespec;
@@ -74,7 +78,7 @@ uint64_t timestamp_timeofday(){
 
 uint64_t (*available_timer_funcs[])() = {timestamp_rdtsc, timestamp_clock_mono, timestamp_timeofday};
 
-void perform_measurement(int ipc_func_index, int mode, uint64_t (*timer_func)(), size_t bufsize){
+void perform_measurement(int ipc_func_index, int mode, uint64_t (*timer_func)()){
     // TODO: arrays: funcs, functs name, data_size_arr, packsize_arr_count
     uint64_t counter_transfer = 0;  // counter for only transfer part
     uint64_t counter_all = 0; // ccounter for the entire ipc function call
@@ -83,28 +87,25 @@ void perform_measurement(int ipc_func_index, int mode, uint64_t (*timer_func)(),
     printf("mechanism, data size, buffer/package size, how many reps for avg, Transfer time, Overall time\n");
     fflush(stdout);
     for (int d = 0; d < datasize_arr_count; d++){
+        for (int b = 0; b < buffer_size_arr_count; b++){
         // reset the timer counts
         counter_transfer = 0;
         counter_all = 0;
+        size_t test_data_size = datasize_arr[d];
+        size_t bufsize = buffer_size_arr[b];
+        if (mode != LATENCY)
+            test_data_size = (d + 1) * S_512KB;
         for (int rep = 1; rep <= MAX_REP; rep++){
-            uint64_t before = 0;
-            uint64_t after = 0;
-            before = (*timer_func)();
-            counter_transfer += (*ipc_func[ipc_func_index])(datasize_arr[d], bufsize, timer_func, mode);
-            after = (*timer_func)();
-            counter_all += after - before;
-            reportable_avg_transfer =  counter_transfer / rep / mode;
-            reportable_avg_all = counter_all / rep / mode;
-            if (rep % 2 == 0){
-                printf("%s,%ld,%ld,%d,%lu,%lu,\n",
+            counter_transfer += (*ipc_func[ipc_func_index])(test_data_size, bufsize, timer_func, mode);
+        }
+        reportable_avg_transfer =  counter_transfer / MAX_REP / mode;
+        printf("%s,%ld,%ld,%lu,\n",
                     ipc_func_name[ipc_func_index],
-                    datasize_arr[d],
+                    test_data_size,
                     bufsize,
-                    rep,
-                    reportable_avg_transfer,
-                    reportable_avg_all);
-                fflush(stdout);
-            } 
+                    reportable_avg_transfer
+                    );
+        fflush(stdout);
         }
     }
 }
@@ -113,19 +114,17 @@ void perform_measurement(int ipc_func_index, int mode, uint64_t (*timer_func)(),
 
 int main(int argc, char **argv){
     //check_current_timer_readings();
-    if (argc != 5){
+    if (argc != 4){
         printf("usage: ./measure_[name] [ipc func] [timer opt] [mode opt] [buf size]\n");
         printf("ipc func: 1 = Pipe; 2 = Socket; 3 = Shared Mem\n");
         printf("timer: 1 = RDTSC; 2 = Clock_Mono; 3 = TimeOfDay\n");
         printf("mode: 1 = Throughput; 2 = Latency;\n");
-        printf("buf size: buffer size. Max 1000000\n");
         return 0;
     }
     int ipc_func_index = (int)(argv[1][0] - '1');
     int timer_index = (int)(argv[2][0] - '1');
     int mode = (int)(argv[3][0] - '0');
-    size_t bufsize = (size_t)atoi(argv[4]);
     
-    perform_measurement(ipc_func_index, mode, available_timer_funcs[timer_index], bufsize);
+    perform_measurement(ipc_func_index, mode, available_timer_funcs[timer_index]);
     return 0;
 }
