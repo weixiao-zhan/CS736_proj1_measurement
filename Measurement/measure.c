@@ -84,28 +84,30 @@ void perform_measurement(int ipc_func_index, int mode, uint64_t (*timer_func)())
     uint64_t counter_all = 0; // ccounter for the entire ipc function call
     uint64_t reportable_avg_transfer = 0;  // reportable average for only transfer part
     uint64_t reportable_avg_all = 0; // reportable average for the entire ipc function call
-    printf("mechanism, data size, buffer/package size, how many reps for avg, Transfer time, Overall time\n");
+    printf("mechanism, data size, buffer/package size, rep num, Transfer time,\n");
     fflush(stdout);
     for (int d = 0; d < datasize_arr_count; d++){
         for (int b = 0; b < buffer_size_arr_count; b++){
-        // reset the timer counts
-        counter_transfer = 0;
-        counter_all = 0;
-        size_t test_data_size = datasize_arr[d];
-        size_t bufsize = buffer_size_arr[b];
-        if (mode != LATENCY)
-            test_data_size = (d + 1) * S_512KB;
-        for (int rep = 1; rep <= MAX_REP; rep++){
-            counter_transfer += (*ipc_func[ipc_func_index])(test_data_size, bufsize, timer_func, mode);
-        }
-        reportable_avg_transfer =  counter_transfer / MAX_REP / mode;
-        printf("%s,%ld,%ld,%lu,\n",
+            // reset the timer counts
+            counter_transfer = 0;
+            counter_all = 0;
+            size_t test_data_size = datasize_arr[d];
+            size_t bufsize = buffer_size_arr[b];
+            if (mode != LATENCY)
+                test_data_size = (d + 1) * S_512KB;
+            for (int rep = 1; rep <= MAX_REP; rep++){
+                counter_transfer = (*ipc_func[ipc_func_index])(test_data_size, bufsize, timer_func, mode);
+                reportable_avg_transfer =  counter_transfer / mode;
+                printf("%s,%ld,%ld,%d,%lu,\n",
                     ipc_func_name[ipc_func_index],
                     test_data_size,
                     bufsize,
+		    rep,
                     reportable_avg_transfer
                     );
-        fflush(stdout);
+                fflush(stdout);
+	    }
+
         }
     }
 }
